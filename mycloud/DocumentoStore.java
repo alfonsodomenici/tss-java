@@ -14,44 +14,62 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.security.Principal;
 import java.util.List;
+import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.annotation.PostConstruct;
+import javax.annotation.security.RolesAllowed;
 import javax.ejb.EJBException;
 import javax.ejb.Stateless;
+import javax.inject.Inject;
 import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
+import org.eclipse.microprofile.jwt.Claims;
+import org.eclipse.microprofile.jwt.JsonWebToken;
 
 /**
  *
  * @author tss
  */
+@RolesAllowed({"users"})
 @Stateless
 public class DocumentoStore {
 
     @PersistenceContext
     EntityManager em;
+
+    @Inject
+    Principal principal;
     
-    User logged;
+    @Inject
+    JsonWebToken token;
+
+    @Inject
+    UserStore userStore;
     
     @PostConstruct
-    public void init(){
-        logged = em.find(User.class, 1l);
+    public void init() {
         
     }
-    
-    public List<Documento> all(){
-        return em.createQuery("select e from Documento e where e.user= :usr")
-                .setParameter("usr", logged)
+
+    public List<Documento> all() {
+        System.out.println("token user: " + token.getName());
+        System.out.println("token email: " + token.getClaim(Claims.email.name()));
+        return em.createQuery("select e from Documento e where e.user.usr= :usr")
+                .setParameter("usr", principal.getName())
                 .getResultList();
     }
-    
-    public Documento find(Long id){
+
+    public Documento find(Long id) {
         return em.find(Documento.class, id);
     }
+
     
     public Documento save(Documento d, InputStream is) {
+        Optional<User> user = userStore.findByUsr(principal.getName());
+        User logged = user.orElseThrow(() -> new EJBException("utente non trovato: " + principal.getName()));
         d.setUser(logged);
         Documento saved = em.merge(d);
         try {
@@ -62,24 +80,21 @@ public class DocumentoStore {
         }
         return saved;
     }
-    
-    public void delete(Long id) {
+
+    public void remove(Long id) {
         Documento saved = find(id);
         try {
             Files.delete(documentPath(saved.getFileName()));
         } catch (IOException ex) {
             throw new EJBException("delete document failed...");
         }
-        em.remove(id);
-    }
-    
-    private Path documentPath(String name){
-        System.out.println("user: " + logged + " name: " + name);
-        return Paths.get(Configuration.DOCUMENT_FOLDER + 
-                logged.getUsr() + "/" + name);
+        em.remove(saved);
     }
 
-    void removeByUser(Long id) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    private Path documentPath(String name) {
+        return Paths.get(Configuration.DOCUMENT_FOLDER
+                + principal.getName() + "/" + name);
     }
+
+   
 }

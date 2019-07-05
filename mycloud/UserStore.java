@@ -59,6 +59,18 @@ public class UserStore {
         return em.find(User.class, id);
     }
 
+    public Optional<User> findByUsr(String usr) {
+        try {
+            User p = em.createQuery("select e from User e "
+                    + "where e.usr= :usr", User.class)
+                    .setParameter("usr", usr)
+                    .getSingleResult();
+            return Optional.of(p);
+        } catch (NoResultException | NonUniqueResultException ex) {
+            return Optional.empty();
+        }
+    }
+
     public User save(User a) {
         User saved = em.merge(a);
         Path path = Paths.get(Configuration.DOCUMENT_FOLDER + saved.getUsr());
@@ -77,15 +89,15 @@ public class UserStore {
         em.createQuery("delete from Documento e where e.user= :usr")
                 .setParameter("usr", saved)
                 .executeUpdate();
-        em.remove(find(id));
+        em.remove(saved);
         try {
-            deleteDirectoryStream(Paths.get(Configuration.DOCUMENT_FOLDER + saved.getUsr()));
+            deleteDirectory(Paths.get(Configuration.DOCUMENT_FOLDER + saved.getUsr()));
         } catch (IOException ex) {
             throw new EJBException("remove user failed...");
         }
     }
 
-    private void deleteDirectoryStream(Path path) throws IOException {
+    private void deleteDirectory(Path path) throws IOException {
         Files.walk(path)
                 .sorted(Comparator.reverseOrder())
                 .map(Path::toFile)
